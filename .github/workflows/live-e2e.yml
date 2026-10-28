@@ -1,0 +1,31 @@
+name: Live E2E (manual)
+
+# Runs the full live end-to-end on a GenLayer Studio network and attaches the
+# report. Manual on purpose: it takes tens of minutes and uses real validators.
+on:
+  workflow_dispatch:
+    inputs:
+      network:
+        description: studionet | studio_next | studio_devnet
+        default: studionet
+      quick:
+        description: "Skip the slowest hostile-evidence probes (true/false)"
+        default: "false"
+
+jobs:
+  live-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements-live.txt
+      - name: Run
+        run: python scripts/live_e2e.py --network "${{ inputs.network }}" $([ "${{ inputs.quick }}" = "true" ] && echo --quick)
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: live-e2e-report
+          path: reports/
