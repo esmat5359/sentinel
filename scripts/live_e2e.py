@@ -857,7 +857,8 @@ class LiveEnv:
         h = self.client.deploy_contract(code=code, account=acct, args=args, fees=fees)
         rcpt = self._wait(h)
         if not _succeeded(rcpt):
-            raise Fail("deploy %s did not succeed: %s" % (name, json.dumps(rcpt.get("lifecycle"), default=str)))
+            raise Fail("deploy %s did not succeed: %s | %s" % (
+                name, json.dumps(rcpt.get("lifecycle"), default=str), _exec_detail(rcpt)))
         addr = (rcpt.get("data") or {}).get("contract_address") or rcpt.get("to_address") \
             or rcpt.get("recipient") or rcpt.get("contract_address")
         if not addr:
@@ -886,6 +887,26 @@ class LiveEnv:
         if isinstance(v, str) and v[:1] in "{[":
             return json.loads(v)
         return v
+
+
+def _exec_detail(rcpt) -> str:
+    """Why a transaction that reached decided/accepted still did not execute: the leader's
+    execution_result and VM stderr. 'accepted' only means validators agreed on an outcome,
+    including the outcome 'the contract failed to load' (e.g. a runner hash the network
+    does not run)."""
+    try:
+        lr = (rcpt.get("consensus_data") or {}).get("leader_receipt")
+        if isinstance(lr, list):
+            lr = lr[0] if lr else {}
+        lr = lr or {}
+        parts = ["execution_result=%s" % lr.get("execution_result")]
+        gr = lr.get("genvm_result") or {}
+        for k in ("stderr", "stdout"):
+            if gr.get(k):
+                parts.append("%s=%s" % (k, str(gr[k])[-400:]))
+        return " ".join(parts)
+    except Exception as e:
+        return "no execution detail (%s)" % e
 
 
 def _succeeded(rcpt) -> bool:

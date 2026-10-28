@@ -1,5 +1,5 @@
-# { "Depends": "py-genlayer:babwp9t37jw9g4j2bccgn14g6x7x9s1f7dsmh7emvz735pz4zxa0" }
-import genlayer as gl
+# { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
+from genlayer import *
 import json
 
 # ============================================================================
@@ -25,10 +25,10 @@ MIN_DEPOSIT = 10**12  # a dust floor, not an economic parameter
 MAX_BALANCE_ENTRIES_PAGE = 40
 
 
-@gl.contract.interface
+@gl.contract_interface
 class _SentinelHalt:
 	"""Typed stub for the oracle. Purely for IDE/type-checking convenience --
-	at runtime this behaves identically to gl.contract.get_at()."""
+	at runtime this behaves identically to gl.get_contract_at()."""
 	class View:
 		def is_halted(self, target: str) -> bool: ...
 
@@ -47,12 +47,12 @@ class _Wallet:
 		pass
 
 
-class TreasuryVault(gl.contract.Contract):
+class TreasuryVault(gl.Contract):
 	owner: gl.Address
 	sentinel: gl.Address
 
-	balances: gl.storage.TreeMap[gl.Address, gl.u256]
-	holders: gl.storage.DynArray[gl.Address]
+	balances: TreeMap[gl.Address, gl.u256]
+	holders: DynArray[gl.Address]
 
 	total_deposited: gl.u256
 	total_withdrawn: gl.u256

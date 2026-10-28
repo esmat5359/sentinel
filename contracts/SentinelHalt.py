@@ -1,5 +1,6 @@
-# { "Depends": "py-genlayer:babwp9t37jw9g4j2bccgn14g6x7x9s1f7dsmh7emvz735pz4zxa0" }
-import genlayer as gl
+# { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
+from genlayer import *
+import datetime
 import json
 
 # ============================================================================
@@ -343,13 +344,6 @@ class _Wallet:
 		pass
 
 
-# `gl.storage.allow` only marks a class as usable inside contract storage. It
-# is aliased to the name genvm-lint's AST layer looks for (`allow_storage`,
-# the pre-v0.6 spelling), which otherwise reports a false "needs
-# @allow_storage" on every storage class even though the SDK's own
-# validation passes. Same decorator, two spellings.
-allow_storage = gl.storage.allow
-
 
 @allow_storage
 class Target:
@@ -391,26 +385,26 @@ class ReporterStats:
 	inconclusive_count: gl.u32
 
 
-class SentinelHalt(gl.contract.Contract):
+class SentinelHalt(gl.Contract):
 	owner: gl.Address
 	paused: bool
 
-	targets: gl.storage.TreeMap[gl.Address, Target]
-	target_ids: gl.storage.DynArray[gl.Address]
+	targets: TreeMap[gl.Address, Target]
+	target_ids: DynArray[gl.Address]
 
-	reports: gl.storage.TreeMap[gl.u32, Report]
+	reports: TreeMap[gl.u32, Report]
 	next_report_id: gl.u32
-	target_report_ids: gl.storage.TreeMap[gl.Address, gl.storage.DynArray[gl.u32]]
+	target_report_ids: TreeMap[gl.Address, DynArray[gl.u32]]
 
-	reporter_stats: gl.storage.TreeMap[gl.Address, ReporterStats]
+	reporter_stats: TreeMap[gl.Address, ReporterStats]
 
 	report_bond: gl.u128
 	action_cooldown_seconds: gl.u64
 
-	credits: gl.storage.TreeMap[gl.Address, gl.u128]
+	credits: TreeMap[gl.Address, gl.u128]
 	credits_outstanding: gl.u128
 	compensation_outstanding: gl.u128
-	attempts: gl.storage.TreeMap[str, gl.u64]
+	attempts: TreeMap[str, gl.u64]
 
 	count_targets: gl.u32
 	count_reports: gl.u32
@@ -441,11 +435,12 @@ class SentinelHalt(gl.contract.Contract):
 	def _now(self) -> int:
 		"""Deterministic transaction time. Called only from the contract's
 		own deterministic code, NEVER from inside leader_fn/validator_fn --
-		gl.vm.get_timestamp() is only deterministic outside a
+		the message datetime is only deterministic outside a
 		non-deterministic block; inside one it is real wall-clock time and
 		would silently break consensus."""
 		try:
-			return int(gl.vm.get_timestamp().timestamp())
+			stamp = str(gl.message_raw['datetime']).replace('Z', '+00:00')
+			return int(datetime.datetime.fromisoformat(stamp).timestamp())
 		except Exception:
 			return 0
 
@@ -525,7 +520,7 @@ class SentinelHalt(gl.contract.Contract):
 				try:
 					leader_fn()
 				except gl.vm.UserError as e:
-					validator_msg = str(getattr(e, 'data', e))
+					validator_msg = _error_text(e)
 					if (leader_msg.startswith(_TRANSIENT_PREFIXES)
 							and validator_msg.startswith(_TRANSIENT_PREFIXES)):
 						# Both independently hit the same class of
@@ -674,7 +669,7 @@ class SentinelHalt(gl.contract.Contract):
 			self.count_retry_later = gl.u32(int(self.count_retry_later) + 1)
 			return json.dumps({'ok': True, 'target': str(t.address), 'action': action,
 				'verdict': 'RETRY_LATER', 'status': str(t.status),
-				'bond_forfeited': False, 'reason': str(getattr(e, 'data', e))[:250]})
+				'bond_forfeited': False, 'reason': _error_text(e)[:250]})
 
 		obs = res if isinstance(res, dict) else {}
 		verdict = str(obs.get('verdict', VERDICT_INCONCLUSIVE))
@@ -794,7 +789,7 @@ class SentinelHalt(gl.contract.Contract):
 		except gl.vm.UserError as e:
 			return json.dumps({'ok': True, 'target': str(t.address), 'action': a,
 				'preview_verdict': 'RETRY_LATER', 'confidence': 0, 'reasoning': '',
-				'fetch_note': str(getattr(e, 'data', e))[:250], 'binding': False})
+				'fetch_note': _error_text(e)[:250], 'binding': False})
 		obs = res if isinstance(res, dict) else {}
 		return json.dumps({'ok': True, 'target': str(t.address), 'action': a,
 			'preview_verdict': str(obs.get('verdict', VERDICT_INCONCLUSIVE)),

@@ -264,6 +264,15 @@ between GenVM releases (`v0.6.0-rc3` uses `5jycge...`; the `v0.6.0-rc9` and
 because it is the newest release published at build time, but **it could not
 be confirmed against what Studio Devnet is actually running.**
 
+> **Studionet (chain 61999) runs a different runner.** The `babwp9...` runner is the
+> Studio Next / v0.6 one; deploying it to Studionet ends as `decided / accepted` but the
+> contract never loads (execution is not `SUCCESS`). The contracts in this repo are
+> therefore pinned to `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6`
+> (GenVM v0.2.x SDK, shipped in the v0.3.0-rc7 bundle) and written against that SDK:
+> `from genlayer import *`, `gl.Contract`, `gl.contract_interface`, `@allow_storage`,
+> `TreeMap` / `DynArray`, and the transaction time from `gl.message_raw['datetime']`.
+> Lint with `GENVM_VERSION=v0.3.0-rc7 genvm-lint check contracts/<name>.py`.
+
 If your deploy is rejected over the runner, run
 `python3 scripts/set_runner_hash.py --show`, find the runner your network
 expects, and switch both contracts at once with
