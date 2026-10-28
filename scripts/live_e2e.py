@@ -765,6 +765,17 @@ class LiveEnv:
         self.chain = getattr(chains, chain_attr)
         self.rpc = args.rpc or os.environ.get("GENLAYER_RPC_URL") or rpc_default
         self.client = create_client(chain=self.chain, endpoint=self.rpc)
+        # genlayer-py keeps only error.code/message and drops error.data, which is where the
+        # node puts the real reason ("execution failed" alone says nothing). Remember the
+        # last raw error so read() can show it.
+        self.last_rpc_error = None
+        _prov = self.client.provider
+        _orig_raise = _prov._raise_on_error
+
+        def _keep_error(resp, ctx, _o=_orig_raise, _self=self):
+            _self.last_rpc_error = resp.get("error") if isinstance(resp, dict) else None
+            return _o(resp, ctx)
+        _prov._raise_on_error = _keep_error
         self.rpc = self.rpc or self.chain.rpc_urls["default"]["http"][0]
         self.accounts = {r: create_account() for r in ROLES}
         self.fixture_base = self._fixture_base()
@@ -882,8 +893,21 @@ class LiveEnv:
         return Tx(_succeeded(rcpt), h, outcome, _find_ret(rcpt), "")
 
     def read(self, addr, method, args):
-        v = self.client.read_contract(address=addr, function_name=method, args=args,
-                                      account=self.accounts["owner"])
+        last = None
+        for attempt in range(4):
+            try:
+                v = self.client.read_contract(address=addr, function_name=method, args=args,
+                                              account=self.accounts["owner"])
+                break
+            except Exception as e:
+                last = e
+                # a view right after a deploy/write can race the node applying the state
+                if attempt < 3:
+                    time.sleep(4)
+        else:
+            raise Fail("read %s.%s failed after 4 tries: %s | raw rpc error: %s" % (
+                addr, method, str(last)[:200],
+                json.dumps(self.last_rpc_error, default=str)[:1500]))
         if isinstance(v, str) and v[:1] in "{[":
             return json.loads(v)
         return v
