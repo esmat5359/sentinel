@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# What CI can and cannot prove: it lints and validates both contracts against
+# the real GenVM SDK, runs the 52 Direct Mode tests, type-checks and builds
+# the frontend, and type-checks the deploy scripts. It does NOT run
+# tests/integration/ -- that needs a funded Studio Devnet account and a live
+# network, so it stays a manual step (see tests/integration/README.md).
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    env:
+      # genvm-linter and gltest resolve the latest GenVM release through the
+      # GitHub API, which is rate-limited when unauthenticated.
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # The GenVM runtime bundles are several hundred MB each; cache them.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/gltest-direct
+            ~/.cache/genvm-linter
+          key: genvm-runtime-${{ hashFiles('requirements-dev.txt') }}
+
+      - name: Install toolchain
+        run: pip install -r requirements-dev.txt
+
+      # genvm-lint falls back to an OLDER GenVM release (v0.6.0-rc3) whenever
+      # it cannot resolve "latest" through the rate-limited GitHub API, and
+      # the runner hash the contracts pin only exists in rc9/rc10 -- so fetch
+      # the runtime explicitly rather than trusting the fallback.
+      - name: Fetch the pinned GenVM runtime for the linter
+        run: genvm-lint download --version v0.6.0-rc9
+
+      - name: Lint and validate contracts against the real SDK
+        run: |
+          genvm-lint check contracts/SentinelHalt.py
+          genvm-lint check contracts/TreasuryVault.py
+
+      # The suite pins its own GenVM runtime (GENVM_VERSION, set in
+      # tests/direct/conftest.py), so it does not depend on the GitHub API.
+      - name: Direct Mode tests
+        run: python -m pytest tests/direct -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+
+  deploy-scripts:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: deploy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: deploy/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
